@@ -164,7 +164,7 @@ const CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart";
 // domain a network filter would recognize and block.
 async function fetchJsonViaProxies(targetUrl){
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), 6000);
   try{
     const res = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, { signal: controller.signal, cache: 'no-store' });
     clearTimeout(timeout);
@@ -281,9 +281,21 @@ async function liveStockList(symbols){
     return await customStockList(symbols);
   } catch(e){
     // Custom server down/unreachable — fall back to Yahoo per-symbol.
+    // Staggered (not Promise.all) on purpose: firing all requests at once
+    // from a shared server IP is exactly the pattern that triggers Yahoo's
+    // rate limiter (the 429s we saw). A small delay between each keeps
+    // volume low enough to stay under it, at the cost of being a bit slower.
     let firstErr = null;
-    const results = await Promise.all(symbols.map(s => yahooQuote(s).catch(err => { if(!firstErr) firstErr = err; return null; })));
-    const ok = results.filter(Boolean);
+    const ok = [];
+    for(const s of symbols){
+      try{
+        const q = await yahooQuote(s);
+        ok.push(q);
+      } catch(err){
+        if(!firstErr) firstErr = err;
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
     if(ok.length === 0) throw new Error('both sources failed. Custom API: ' + e.message + ' | Yahoo: ' + (firstErr ? firstErr.message : 'unknown'));
     return ok;
   }
@@ -379,14 +391,16 @@ function seededHistory(symbol, endPrice){
 // ---------- Home dashboard (indices, top movers, popular) ----------
 async function renderIndices(){
   const el = document.getElementById('indices');
-  const cards = await Promise.all(INDICES.map(async idx => {
+  const cards = [];
+  for(const idx of INDICES){
     try{
       const d = await liveIndex(idx.yahoo);
-      return { ...idx, ...d, live: true };
+      cards.push({ ...idx, ...d, live: true });
     } catch(e){
-      return { ...idx, price: null, change: null, pct: null, live: false };
+      cards.push({ ...idx, price: null, change: null, pct: null, live: false });
     }
-  }));
+    await new Promise(r => setTimeout(r, 250));
+  }
   el.innerHTML = cards.map(c => {
     if(c.price == null) return `<div class="index-card"><div class="index-name">${c.label}</div><div style="color:var(--muted); font-size:13px; margin-top:4px;">Unavailable</div></div>`;
     const up = (c.change ?? 0) >= 0;
@@ -436,12 +450,12 @@ function moverRow(s){
   </div>`;
 }
 
-function loadHomeDashboard(){
+async function loadHomeDashboard(){
   document.getElementById('home-dashboard').style.display = 'block';
   document.getElementById('results').style.display = 'none';
   document.getElementById('count').textContent = '';
-  renderIndices();
-  renderPopularAndMovers();
+  await renderIndices();
+  await renderPopularAndMovers();
 }
 
 // ---------- Search / category results ----------
@@ -604,7 +618,7 @@ loadHomeDashboard();
 // your browser is showing a cached/old version, not the current code.
 const marker = document.createElement('div');
 marker.style.cssText = 'text-align:center; color:var(--muted); font-size:10px; margin-top:30px; opacity:0.6;';
-marker.textContent = 'build: v6-error-detail';
+marker.textContent = 'build: v7-rate-limit-fix';
 document.querySelector('.wrap').appendChild(marker);
 </script>
 </body>
