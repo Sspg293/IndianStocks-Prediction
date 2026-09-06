@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     // re-hits Yahoo for the same handful of symbols and quickly trips their
     // rate limiter (this is what caused the 429 errors). 20 seconds keeps
     // data feeling live while cutting request volume drastically.
-    res.setHeader('Cache-Control', 'public, s-maxage=20, stale-while-revalidate=40');
+    res.setHeader('Cache-Control', 'public, s-maxage=45, stale-while-revalidate=90');
     res.status(upstream.status).send(text);
   } catch (err) {
     res.status(502).json({ error: 'Upstream fetch failed', detail: String(err) });
