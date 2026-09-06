@@ -162,17 +162,19 @@ const CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart";
 // function at /api/proxy). Runs server-side, so there's no browser CORS
 // restriction to route around, and nothing here is a third-party "proxy"
 // domain a network filter would recognize and block.
-async function fetchJsonViaProxies(targetUrl, isRetry){
+async function fetchJsonViaProxies(targetUrl, attempt){
+  attempt = attempt || 0;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6000);
   try{
     const res = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, { signal: controller.signal, cache: 'no-store' });
     clearTimeout(timeout);
     const text = await res.text();
-    if(res.status === 429 && !isRetry){
-      // Rate-limited — back off longer than our normal spacing and retry once.
-      await new Promise(r => setTimeout(r, 3000));
-      return fetchJsonViaProxies(targetUrl, true);
+    if(res.status === 429 && attempt < 2){
+      // Rate-limited — back off progressively longer (3s, then 7s) and retry.
+      // Two retries max so a genuinely stuck request doesn't hang forever.
+      await new Promise(r => setTimeout(r, attempt === 0 ? 3000 : 7000));
+      return fetchJsonViaProxies(targetUrl, attempt + 1);
     }
     if(!res.ok) throw new Error(`proxy status ${res.status}: ${text.slice(0,150)}`);
     try{
@@ -623,7 +625,7 @@ loadHomeDashboard();
 // your browser is showing a cached/old version, not the current code.
 const marker = document.createElement('div');
 marker.style.cssText = 'text-align:center; color:var(--muted); font-size:10px; margin-top:30px; opacity:0.6;';
-marker.textContent = 'build: v8-retry-backoff';
+marker.textContent = 'build: v9-double-retry';
 document.querySelector('.wrap').appendChild(marker);
 </script>
 </body>
