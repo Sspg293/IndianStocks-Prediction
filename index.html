@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Indian Stocks — NSE &amp; BSE Prices</title>
+<style>
+  :root {
+    --ink: #12161C;
+    --ink-soft: #1B212A;
+    --paper: #F6F3EC;
+    --brass: #C9A24B;
+    --gain: #2E8B57;
+    --loss: #C1432E;
+    --muted: #8B93A1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 20px 60px; }
+  h1 { font-size: 28px; font-weight: 600; margin: 0; }
+  .subtitle { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .banner {
+    display: none;
+    background: var(--ink-soft);
+    border: 1px solid #33261a;
+    border-left: 3px solid var(--brass);
+    color: var(--muted);
+    font-size: 12.5px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-top: 16px;
+    line-height: 1.5;
+  }
+  input#search {
+    width: 100%;
+    height: 42px;
+    background: var(--ink-soft);
+    border: 1px solid var(--ink-soft);
+    color: var(--paper);
+    border-radius: 10px;
+    padding: 0 14px;
+    font-size: 14px;
+    margin-top: 18px;
+  }
+  input#search:focus { outline: none; border-color: var(--brass); }
+  .chips { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .chip {
+    font-size: 12.5px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    background: var(--ink-soft);
+    color: var(--muted);
+    user-select: none;
+  }
+  .chip.active { background: var(--brass); color: var(--ink); font-weight: 600; }
+  #count { color: var(--muted); font-size: 12px; margin-top: 14px; }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--ink-soft);
+    cursor: pointer;
+  }
+  .row:hover .rname { color: var(--brass); }
+  .rname { font-size: 15px; font-weight: 500; transition: color .1s; }
+  .rmeta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .rprice { font-size: 14px; text-align: right; }
+  .rpct { font-size: 12px; text-align: right; margin-top: 3px; }
+  #detail { display: none; }
+  .back {
+    color: var(--paper);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 6px 0 18px;
+    display: inline-block;
+  }
+  .dname { font-size: 20px; font-weight: 600; }
+  .dsector { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  .dprice { font-size: 42px; font-weight: 700; margin-top: 18px; }
+  .dchange { font-size: 15px; font-weight: 500; margin-top: 4px; }
+  .chart-label { color: var(--muted); font-size: 12px; margin-top: 20px; }
+  canvas#chart { width: 100%; height: 130px; margin-top: 8px; display: block; }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--ink-soft);
+    font-size: 13.5px;
+  }
+  .stat-row span:first-child { color: var(--muted); }
+  .stat-row span:last-child { font-weight: 500; }
+  .disclaimer { color: var(--muted); font-size: 11.5px; margin-top: 20px; line-height: 1.5; }
+  .empty { color: var(--muted); font-size: 14px; padding-top: 24px; }
+  .spinner {
+    width: 20px; height: 20px; border: 2px solid var(--ink-soft);
+    border-top-color: var(--brass); border-radius: 50%;
+    animation: spin .7s linear infinite; margin: 30px auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .section-label { color: var(--muted); font-size: 12px; margin-top: 22px; margin-bottom: 8px; letter-spacing: .02em; text-transform: uppercase; }
+  .index-strip { display: flex; gap: 10px; }
+  .index-card { flex: 1; background: var(--ink-soft); border-radius: 10px; padding: 12px 14px; }
+  .index-name { font-size: 12px; color: var(--muted); }
+  .index-value { font-size: 18px; font-weight: 600; margin-top: 4px; }
+  .index-change { font-size: 12px; margin-top: 2px; }
+  .movers-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid var(--ink-soft); cursor: pointer;
+  }
+  .movers-row .rname { font-size: 13.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="search-screen">
+    <h1>Indian Stocks</h1>
+    <div class="subtitle">NSE &amp; BSE prices</div>
+    <div id="live-banner" class="banner"></div>
+    <input id="search" type="text" placeholder="Search any company or ETF" />
+    <div class="chips" id="chips"></div>
+    <div id="count"></div>
+    <div id="results" style="display:none;"></div>
+
+    <div id="home-dashboard">
+      <div class="section-label">Market indices</div>
+      <div class="index-strip" id="indices"><div class="spinner"></div></div>
+
+      <div class="section-label">Top movers</div>
+      <div id="movers"><div class="spinner"></div></div>
+
+      <div class="section-label">Popular</div>
+      <div id="popular"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <div id="detail">
+    <span class="back" id="backBtn">&larr; Back</span>
+    <div id="detailContent"></div>
+  </div>
+
+</div>
+
+<script>
+// ---------- Data sources ----------
+const STOCK_API = "http://65.0.104.9";
+const CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart";
+
+// Own serverless proxy, hosted on the same domain as this site (Vercel
+// function at /api/proxy). Runs server-side, so there's no browser CORS
+// restriction to route around, and nothing here is a third-party "proxy"
+// domain a network filter would recognize and block.
+async function fetchJsonViaProxies(targetUrl){
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try{
+    const res = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if(!res.ok) throw new Error('bad status ' + res.status);
+    return await res.json();
+  } catch(e){
+    clearTimeout(timeout);
+    throw e;
+  }
+}
+
+let liveDataAvailable = null;
+let refreshTimer = null;
+let currentDetailSymbol = null;
+
+// ---------- Curated ETF lists ----------
+const GOLD_ETFS = ["GOLDBEES","SETFGOLD","GOLDIETF","HDFCGOLD","GOLD1","GOLDBETA","BSLGOLDETF","AXISGOLD","GOLDADD","QGOLDHALF","LICMFGOLD","IVZINGOLD","TATAGOLD"];
+const SILVER_ETFS = ["SILVERBEES","SILVERIETF","HDFCSILVER","SILVER1","TATSILV","SBISILVER","SILVERADD","SILVERAG","SILVERBETA","AXISILVER","ESILVER","SILVER"];
+const POPULAR_SYMBOLS = ["RELIANCE","TCS","HDFCBANK","INFY","ITC","ICICIBANK","SBIN"];
+const INDICES = [ { label: "NIFTY 50", yahoo: "^NSEI" }, { label: "SENSEX", yahoo: "^BSESN" } ];
+
+// ---------- Sample fallback data ----------
+const SAMPLE = [
+  {symbol:"RELIANCE", name:"Reliance Industries Limited", cat:"Stocks", sector:"Energy", price:2456.75, change:12.3, pct:0.5, open:2450.0, prevClose:2444.45, dayLow:2445.2, dayHigh:2468.9, yrLow:2220.3, yrHigh:2856.0, volume:8234567, pe:27.35, mcap:1664567890000},
+  {symbol:"TCS", name:"Tata Consultancy Services Limited", cat:"Stocks", sector:"Technology", price:3456.75, change:-12.5, pct:-0.36, open:3465.0, prevClose:3469.25, dayLow:3445.2, dayHigh:3478.9, yrLow:3011.3, yrHigh:4078.0, volume:1234567, pe:29.35, mcap:1267894500000},
+  {symbol:"HDFCBANK", name:"HDFC Bank Limited", cat:"Stocks", sector:"Financial Services", price:1645.75, change:-5.25, pct:-0.32, open:1650.0, prevClose:1651.0, dayLow:1640.1, dayHigh:1655.4, yrLow:1420.0, yrHigh:1790.0, volume:5678901, pe:19.85, mcap:1245678900000},
+  {symbol:"INFY", name:"Infosys Limited", cat:"Stocks", sector:"Technology", price:1567.8, change:8.9, pct:0.57, open:1560.0, prevClose:1558.9, dayLow:1556.3, dayHigh:1572.5, yrLow:1351.65, yrHigh:1953.9, volume:3456789, pe:24.56, mcap:654321000000},
+  {symbol:"ITC", name:"ITC Limited", cat:"Stocks", sector:"Consumer Defensive", price:445.5, change:2.3, pct:0.52, open:444.0, prevClose:443.2, dayLow:442.5, dayHigh:447.8, yrLow:380.25, yrHigh:490.0, volume:52345670, pe:28.45, mcap:556789450000},
+  {symbol:"ICICIBANK", name:"ICICI Bank Limited", cat:"Stocks", sector:"Financial Services", price:1289.4, change:6.1, pct:0.48, open:1284.0, prevClose:1283.3, dayLow:1281.0, dayHigh:1293.5, yrLow:1050.0, yrHigh:1360.0, volume:9012345, pe:18.2, mcap:912345600000},
+  {symbol:"SBIN", name:"State Bank of India", cat:"Stocks", sector:"Financial Services", price:812.6, change:-3.4, pct:-0.42, open:816.0, prevClose:816.0, dayLow:809.5, dayHigh:818.2, yrLow:680.0, yrHigh:870.0, volume:15234567, pe:10.4, mcap:724567800000},
+  {symbol:"GOLDBEES", name:"Nippon India ETF Gold BeES", cat:"Gold ETF", sector:"Gold", price:130.85, change:0.8, pct:0.62, open:130.1, prevClose:130.05, dayLow:129.9, dayHigh:131.3, yrLow:82.4, yrHigh:135.6, volume:26947630, pe:null, mcap:53341000000},
+  {symbol:"TATAGOLD", name:"Tata Gold Exchange Traded Fund", cat:"Gold ETF", sector:"Gold", price:14.52, change:-0.21, pct:-1.43, open:14.75, prevClose:14.73, dayLow:14.48, dayHigh:14.78, yrLow:9.1, yrHigh:15.2, volume:5558022, pe:null, mcap:57150000000},
+  {symbol:"SILVERBEES", name:"Nippon India Silver ETF", cat:"Silver ETF", sector:"Silver", price:230.42, change:4.05, pct:1.79, open:227.0, prevClose:226.37, dayLow:226.8, dayHigh:231.5, yrLow:93.8, yrHigh:239.0, volume:25235390, pe:null, mcap:29499000000},
+  {symbol:"TATSILV", name:"Tata Silver Exchange Traded Fund", cat:"Silver ETF", sector:"Silver", price:23.25, change:0.4, pct:1.75, open:22.9, prevClose:22.85, dayLow:22.8, dayHigh:23.4, yrLow:9.5, yrHigh:24.1, volume:1980000, pe:null, mcap:5057170000}
+];
+
+let activeCategory = "All";
+const categories = ["All","Stocks","Gold ETF","Silver ETF"];
+
+function fmt(n){ if(n==null) return "—"; const r = Math.round(n*100)/100; return r.toLocaleString('en-IN',{maximumFractionDigits:2}); }
+function fmtVol(v){ if(v==null) return "—"; if(v>=10000000) return (v/10000000).toFixed(2)+" Cr shares"; if(v>=100000) return (v/100000).toFixed(2)+" L shares"; return v.toLocaleString('en-IN')+" shares"; }
+function fmtMcap(v){ if(v==null) return null; const cr = v/10000000; if(cr>=100000) return "₹"+(cr/100000).toFixed(2)+" L Cr"; return "₹"+Math.round(cr).toLocaleString('en-IN')+" Cr"; }
+
+function showBanner(text){
+  const b = document.getElementById('live-banner');
+  b.textContent = text;
+  b.style.display = 'block';
+}
+
+// ---------- Live API calls (all routed through the CORS proxy chain) ----------
+
+// Primary source: the community stock API (65.0.104.9). It has no uptime
+// guarantee — it's a single hobbyist-run server, not a company's
+// infrastructure — so it going down entirely (not just a CORS issue) is a
+// real, recurring failure mode, separate from the proxy layer above.
+async function customStockDetail(symbol){
+  const data = await fetchJsonViaProxies(`${STOCK_API}/stock?symbol=${symbol}`);
+  if(data.status !== 'success' || !data.data) throw new Error(data.message || 'no data');
+  const d = data.data;
+  return {
+    symbol, name: d.company_name, sector: d.sector, price: d.last_price, change: d.change, pct: d.percent_change,
+    open: d.open, prevClose: d.previous_close, dayLow: d.day_low, dayHigh: d.day_high,
+    yrLow: d.year_low, yrHigh: d.year_high, volume: d.volume, pe: d.pe_ratio, mcap: d.market_cap
+  };
+}
+
+async function customStockList(symbols){
+  const data = await fetchJsonViaProxies(`${STOCK_API}/stock/list?symbols=${symbols.join(',')}`);
+  if(data.status !== 'success' || !data.stocks) throw new Error(data.message || 'no stocks');
+  return data.stocks.map(s => ({
+    symbol: s.symbol, name: s.company_name, price: s.last_price, change: s.change,
+    pct: s.percent_change, sector: s.sector, volume: s.volume, pe: s.pe_ratio, mcap: s.market_cap
+  }));
+}
+
+// Fallback source: Yahoo Finance's own chart "meta" data, which includes a
+// current quote alongside the historical prices. Independent infrastructure
+// from the custom API above — if 65.0.104.9 is down, this still works.
+// Fewer fields (no P/E, no market cap) but covers the essentials.
+async function yahooQuote(symbol){
+  const yahooSymbol = symbol.includes('.') ? symbol : symbol + '.NS';
+  const data = await fetchJsonViaProxies(`${CHART_API}/${yahooSymbol}?interval=1d&range=5d`);
+  const result = data.chart && data.chart.result && data.chart.result[0];
+  const meta = result && result.meta;
+  if(!meta || meta.regularMarketPrice == null) throw new Error('no yahoo meta');
+  const price = meta.regularMarketPrice;
+  const prevClose = meta.previousClose ?? meta.chartPreviousClose;
+  const change = prevClose != null ? price - prevClose : null;
+  const pct = prevClose ? (change / prevClose) * 100 : null;
+  return {
+    symbol, name: meta.longName || meta.shortName || symbol, sector: null,
+    price, change, pct,
+    open: meta.regularMarketOpen ?? null, prevClose,
+    dayLow: meta.regularMarketDayLow ?? null, dayHigh: meta.regularMarketDayHigh ?? null,
+    yrLow: meta.fiftyTwoWeekLow ?? null, yrHigh: meta.fiftyTwoWeekHigh ?? null,
+    volume: meta.regularMarketVolume ?? null, pe: null, mcap: null
+  };
+}
+
+async function liveSearch(query){
+  const data = await fetchJsonViaProxies(`${STOCK_API}/search?q=${encodeURIComponent(query)}`);
+  if(data.status !== 'success' || !data.results) throw new Error(data.message || 'no results');
+  return data.results.map(r => ({ symbol: r.symbol, name: r.company_name, cat: "Stocks" }));
+}
+
+async function liveStockList(symbols){
+  try{
+    return await customStockList(symbols);
+  } catch(e){
+    // Custom server down/unreachable — fall back to Yahoo per-symbol.
+    const results = await Promise.all(symbols.map(s => yahooQuote(s).catch(() => null)));
+    const ok = results.filter(Boolean);
+    if(ok.length === 0) throw new Error('both sources failed');
+    return ok;
+  }
+}
+
+async function liveStockDetail(symbol){
+  try{
+    return await customStockDetail(symbol);
+  } catch(e){
+    return await yahooQuote(symbol);
+  }
+}
+
+async function liveHistory(symbol){
+  const yahooSymbol = symbol.includes('.') ? symbol : symbol + '.NS';
+  const data = await fetchJsonViaProxies(`${CHART_API}/${yahooSymbol}?interval=1d&range=1mo`);
+  const result = data.chart && data.chart.result && data.chart.result[0];
+  if(!result) throw new Error('no chart result');
+  const closes = result.indicators.quote[0].close.filter(c => c != null);
+  if(closes.length < 2) throw new Error('not enough points');
+  return closes;
+}
+
+async function liveIndex(yahooSymbol){
+  const data = await fetchJsonViaProxies(`${CHART_API}/${yahooSymbol}?interval=1d&range=5d`);
+  const result = data.chart && data.chart.result && data.chart.result[0];
+  const meta = result && result.meta;
+  if(!meta || meta.regularMarketPrice == null) throw new Error('no index meta');
+  const price = meta.regularMarketPrice;
+  const prevClose = meta.previousClose ?? meta.chartPreviousClose;
+  const change = prevClose != null ? price - prevClose : null;
+  const pct = prevClose ? (change / prevClose) * 100 : null;
+  return { price, change, pct };
+}
+
+// ---------- Chart drawing ----------
+function linearTrendProjection(points, days){
+  const n = points.length;
+  const xs = points.map((_, i) => i);
+  const meanX = xs.reduce((a,b)=>a+b,0) / n;
+  const meanY = points.reduce((a,b)=>a+b,0) / n;
+  let num = 0, den = 0;
+  for(let i=0;i<n;i++){ num += (xs[i]-meanX)*(points[i]-meanY); den += (xs[i]-meanX)**2; }
+  const slope = den === 0 ? 0 : num/den;
+  const intercept = meanY - slope*meanX;
+  const projected = [];
+  for(let i=0;i<days;i++){ projected.push(intercept + slope*(n + i)); }
+  return projected;
+}
+
+function drawChart(canvas, points, color, projection){
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width = canvas.clientWidth * 2;
+  const h = canvas.height = canvas.clientHeight * 2;
+  ctx.clearRect(0,0,w,h);
+
+  const all = projection ? points.concat(projection) : points;
+  const min = Math.min(...all), max = Math.max(...all);
+  const pad = 10, range = (max - min) || 1;
+  const totalLen = all.length;
+  const xFor = i => pad + (i/(totalLen-1)) * (w - pad*2);
+  const yFor = v => h - pad - ((v-min)/range) * (h - pad*2);
+
+  ctx.beginPath();
+  points.forEach((p,i) => { const x=xFor(i), y=yFor(p); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+  ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.stroke();
+
+  const lastX = xFor(points.length-1), lastY = yFor(points[points.length-1]);
+  ctx.beginPath(); ctx.arc(lastX,lastY,7,0,Math.PI*2); ctx.fillStyle = color; ctx.fill();
+
+  if(projection && projection.length){
+    ctx.beginPath();
+    ctx.setLineDash([10, 8]);
+    ctx.moveTo(lastX, lastY);
+    projection.forEach((p,i) => { const x=xFor(points.length+i), y=yFor(p); ctx.lineTo(x,y); });
+    ctx.strokeStyle = '#8B93A1';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function seededHistory(symbol, endPrice){
+  let seed = 0; for(let i=0;i<symbol.length;i++) seed += symbol.charCodeAt(i);
+  const rand = s => { const x = Math.sin(s)*10000; return x - Math.floor(x); };
+  let p = endPrice * (0.88 + rand(seed)*0.06);
+  const pts = [];
+  for(let d=0; d<30; d++){ const r = rand(seed + d*7.3) - 0.5; p += p*r*0.018; pts.push(p); }
+  pts[29] = endPrice;
+  return pts;
+}
+
+// ---------- Home dashboard (indices, top movers, popular) ----------
+async function renderIndices(){
+  const el = document.getElementById('indices');
+  const cards = await Promise.all(INDICES.map(async idx => {
+    try{
+      const d = await liveIndex(idx.yahoo);
+      return { ...idx, ...d, live: true };
+    } catch(e){
+      return { ...idx, price: null, change: null, pct: null, live: false };
+    }
+  }));
+  el.innerHTML = cards.map(c => {
+    if(c.price == null) return `<div class="index-card"><div class="index-name">${c.label}</div><div style="color:var(--muted); font-size:13px; margin-top:4px;">Unavailable</div></div>`;
+    const up = (c.change ?? 0) >= 0;
+    const color = up ? 'var(--gain)' : 'var(--loss)';
+    const sign = up ? '+' : '';
+    return `<div class="index-card">
+      <div class="index-name">${c.label}</div>
+      <div class="index-value">${fmt(c.price)}</div>
+      <div class="index-change" style="color:${color}">${sign}${fmt(c.change)} (${sign}${fmt(c.pct)}%)</div>
+    </div>`;
+  }).join('');
+}
+
+async function renderPopularAndMovers(){
+  const popEl = document.getElementById('popular');
+  const movEl = document.getElementById('movers');
+  let items, fromSample = false;
+  try{
+    items = await liveStockList(POPULAR_SYMBOLS);
+    liveDataAvailable = true;
+  } catch(e){
+    fromSample = true;
+    items = SAMPLE.filter(s => POPULAR_SYMBOLS.includes(s.symbol));
+  }
+
+  if(fromSample){
+    showBanner("Live prices couldn't be reached from this page — showing sample data instead. The Android app doesn't have this restriction.");
+  }
+
+  const sorted = [...items].sort((a,b) => (b.pct ?? 0) - (a.pct ?? 0));
+  movEl.innerHTML = sorted.slice(0,3).map(s => moverRow(s)).join('');
+  popEl.innerHTML = items.map(s => moverRow(s)).join('');
+
+  [movEl, popEl].forEach(el => {
+    el.querySelectorAll('.movers-row').forEach(row => row.addEventListener('click', () => showDetail(row.dataset.symbol)));
+  });
+}
+
+function moverRow(s){
+  const up = (s.change ?? 0) >= 0;
+  const color = up ? 'var(--gain)' : 'var(--loss)';
+  const sign = up ? '+' : '';
+  return `<div class="movers-row" data-symbol="${s.symbol}">
+    <div><div class="rname">${s.name}</div><div class="rmeta">${s.symbol}</div></div>
+    <div style="text-align:right;"><div class="rprice">₹${fmt(s.price)}</div><div class="rpct" style="color:${color}">${sign}${fmt(s.pct)}%</div></div>
+  </div>`;
+}
+
+function loadHomeDashboard(){
+  document.getElementById('home-dashboard').style.display = 'block';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('count').textContent = '';
+  renderIndices();
+  renderPopularAndMovers();
+}
+
+// ---------- Search / category results ----------
+function renderChips(){
+  const el = document.getElementById('chips');
+  el.innerHTML = categories.map(c => `<div class="chip ${c===activeCategory?'active':''}" data-cat="${c}">${c}</div>`).join('');
+  el.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => { activeCategory = chip.dataset.cat; renderChips(); loadCurrentView(); });
+  });
+}
+
+function renderResults(list, fromSample){
+  const el = document.getElementById('results');
+  document.getElementById('count').textContent = list.length + (list.length===1?' result':' results') + (fromSample ? ' (sample data)' : '');
+  if(list.length === 0){
+    el.innerHTML = '<div class="empty">No matches — try a different search or category.</div>';
+    return;
+  }
+  el.innerHTML = list.map(s => {
+    const up = (s.change ?? 0) >= 0;
+    const color = up ? 'var(--gain)' : 'var(--loss)';
+    const sign = up ? '+' : '';
+    const priceHtml = s.price != null
+      ? `<div class="rprice">₹${fmt(s.price)}</div><div class="rpct" style="color:${color}">${sign}${fmt(s.pct)}%</div>`
+      : '';
+    return `<div class="row" data-symbol="${s.symbol}">
+      <div><div class="rname">${s.name}</div><div class="rmeta">${s.symbol} · ${s.cat}</div></div>
+      ${priceHtml}
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.row').forEach(row => row.addEventListener('click', () => showDetail(row.dataset.symbol)));
+}
+
+async function loadCurrentView(){
+  const q = document.getElementById('search').value.trim();
+  const el = document.getElementById('results');
+
+  if(activeCategory === "All" && q.length < 2){
+    loadHomeDashboard();
+    return;
+  }
+
+  document.getElementById('home-dashboard').style.display = 'none';
+  el.style.display = 'block';
+
+  if(activeCategory !== "All"){
+    const symbols = activeCategory === "Gold ETF" ? GOLD_ETFS : SILVER_ETFS;
+    el.innerHTML = '<div class="spinner"></div>';
+    try{
+      const items = await liveStockList(symbols);
+      liveDataAvailable = true;
+      renderResults(items.map(i => ({...i, cat: activeCategory})), false);
+    } catch(e){
+      liveDataAvailable = false;
+      showBanner("Live prices couldn't be reached from this page — showing sample data instead. The Android app doesn't have this restriction.");
+      renderResults(SAMPLE.filter(s => s.cat === activeCategory), true);
+    }
+    return;
+  }
+
+  el.innerHTML = '<div class="spinner"></div>';
+  try{
+    const results = await liveSearch(q);
+    liveDataAvailable = true;
+    renderResults(results, false);
+  } catch(e){
+    liveDataAvailable = false;
+    showBanner("Live search couldn't be reached from this page — showing sample data instead. The Android app doesn't have this restriction.");
+    const ql = q.toLowerCase();
+    renderResults(SAMPLE.filter(s => s.name.toLowerCase().includes(ql) || s.symbol.toLowerCase().includes(ql)), true);
+  }
+}
+
+// ---------- Detail screen ----------
+async function showDetail(symbol, isRefresh){
+  currentDetailSymbol = symbol;
+  document.getElementById('search-screen').style.display = 'none';
+  document.getElementById('detail').style.display = 'block';
+  if(!isRefresh) document.getElementById('detailContent').innerHTML = '<div class="spinner"></div>';
+
+  let s, fromSample = false;
+  try{
+    if(liveDataAvailable === false) throw new Error('skip live');
+    s = await liveStockDetail(symbol);
+  } catch(e){
+    fromSample = true;
+    s = SAMPLE.find(x => x.symbol === symbol) || SAMPLE[0];
+  }
+
+  const up = (s.change ?? 0) >= 0;
+  const color = up ? 'var(--gain)' : 'var(--loss)';
+  const sign = up ? '+' : '';
+  const mcap = fmtMcap(s.mcap);
+
+  let history, chartNote;
+  try{
+    if(fromSample) throw new Error('use seeded');
+    history = await liveHistory(symbol);
+    chartNote = "Last 30 days — live from Yahoo Finance";
+  } catch(e){
+    history = seededHistory(symbol, s.price);
+    chartNote = "Last 30 days (sample — live chart unavailable from this page)";
+  }
+
+  const projection = linearTrendProjection(history, 7);
+
+  document.getElementById('detailContent').innerHTML = `
+    <div class="dname">${s.name}</div>
+    <div class="dsector">${s.sector || ''}${s.cat ? ' · '+s.cat : ''}</div>
+    <div class="dprice">₹${fmt(s.price)}</div>
+    <div class="dchange" style="color:${color}">${sign}${fmt(s.change)}  (${sign}${fmt(s.pct)}%)</div>
+    <div class="chart-label">${chartNote} · <span style="color:var(--muted)">refreshes every 15s</span></div>
+    <canvas id="chart"></canvas>
+    <div style="display:flex; gap:14px; margin-top:8px; font-size:11px; color:var(--muted);">
+      <span><span style="display:inline-block;width:14px;height:2px;background:${color};vertical-align:middle;margin-right:4px;"></span>Actual price</span>
+      <span><span style="display:inline-block;width:14px;height:2px;background:var(--muted);vertical-align:middle;margin-right:4px; border-top:2px dashed var(--muted);"></span>7-day trend projection</span>
+    </div>
+    <div class="disclaimer" style="margin-top:8px;">The dashed line is a straight-line statistical extrapolation of the last 30 days — plain arithmetic, not a machine-learning prediction. It shows "if this exact trend continued," and real prices routinely deviate from it. It is not a forecast of what will actually happen.</div>
+    <div style="border-top:1px solid var(--ink-soft); margin-top:14px;"></div>
+    ${s.open != null ? statRow('Open', '₹'+fmt(s.open)) : ''}
+    ${s.prevClose != null ? statRow('Previous close', '₹'+fmt(s.prevClose)) : ''}
+    ${s.dayLow != null ? statRow('Day range', '₹'+fmt(s.dayLow)+' – ₹'+fmt(s.dayHigh)) : ''}
+    ${s.yrLow != null ? statRow('52-week range', '₹'+fmt(s.yrLow)+' – ₹'+fmt(s.yrHigh)) : ''}
+    ${statRow('Volume', fmtVol(s.volume))}
+    ${s.pe ? statRow('P/E ratio', fmt(s.pe)) : ''}
+    ${mcap ? statRow('Market cap', mcap) : ''}
+    <div class="disclaimer">${fromSample ? 'Sample data shown — live data unavailable from this page. ' : ''}Prices for educational use only — not investment advice. Verify with an official source before trading.</div>
+  `;
+  drawChart(document.getElementById('chart'), history, color, projection);
+
+  if(!isRefresh){
+    if(refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(() => {
+      if(currentDetailSymbol === symbol) showDetail(symbol, true);
+    }, 15000);
+  }
+}
+
+function statRow(label, value){
+  return `<div class="stat-row"><span>${label}</span><span>${value}</span></div>`;
+}
+
+document.getElementById('backBtn').addEventListener('click', () => {
+  if(refreshTimer){ clearInterval(refreshTimer); refreshTimer = null; }
+  currentDetailSymbol = null;
+  document.getElementById('detail').style.display = 'none';
+  document.getElementById('search-screen').style.display = 'block';
+});
+
+let debounce;
+document.getElementById('search').addEventListener('input', () => {
+  clearTimeout(debounce);
+  debounce = setTimeout(loadCurrentView, 350);
+});
+
+renderChips();
+loadHomeDashboard();
+</script>
+</body>
+</html>
