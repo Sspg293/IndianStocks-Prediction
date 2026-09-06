@@ -20,7 +20,11 @@ export default async function handler(req, res) {
     const text = await upstream.text();
 
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    // A short cache is a deliberate tradeoff: without it, every page load
+    // re-hits Yahoo for the same handful of symbols and quickly trips their
+    // rate limiter (this is what caused the 429 errors). 20 seconds keeps
+    // data feeling live while cutting request volume drastically.
+    res.setHeader('Cache-Control', 'public, s-maxage=20, stale-while-revalidate=40');
     res.status(upstream.status).send(text);
   } catch (err) {
     res.status(502).json({ error: 'Upstream fetch failed', detail: String(err) });
