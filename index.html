@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>Indian Stocks — NSE &amp; BSE Prices</title>
 <style>
   :root {
@@ -163,12 +166,18 @@ async function fetchJsonViaProxies(targetUrl){
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try{
-    const res = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, { signal: controller.signal });
+    const res = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, { signal: controller.signal, cache: 'no-store' });
     clearTimeout(timeout);
-    if(!res.ok) throw new Error('bad status ' + res.status);
-    return await res.json();
+    const text = await res.text();
+    if(!res.ok) throw new Error(`proxy status ${res.status}: ${text.slice(0,150)}`);
+    try{
+      return JSON.parse(text);
+    } catch(parseErr){
+      throw new Error(`bad JSON from proxy: ${text.slice(0,150)}`);
+    }
   } catch(e){
     clearTimeout(timeout);
+    if(e.name === 'AbortError') throw new Error('proxy request timed out (10s)');
     throw e;
   }
 }
@@ -272,9 +281,10 @@ async function liveStockList(symbols){
     return await customStockList(symbols);
   } catch(e){
     // Custom server down/unreachable — fall back to Yahoo per-symbol.
-    const results = await Promise.all(symbols.map(s => yahooQuote(s).catch(() => null)));
+    let firstErr = null;
+    const results = await Promise.all(symbols.map(s => yahooQuote(s).catch(err => { if(!firstErr) firstErr = err; return null; })));
     const ok = results.filter(Boolean);
-    if(ok.length === 0) throw new Error('both sources failed');
+    if(ok.length === 0) throw new Error('both sources failed. Custom API: ' + e.message + ' | Yahoo: ' + (firstErr ? firstErr.message : 'unknown'));
     return ok;
   }
 }
@@ -393,17 +403,18 @@ async function renderIndices(){
 async function renderPopularAndMovers(){
   const popEl = document.getElementById('popular');
   const movEl = document.getElementById('movers');
-  let items, fromSample = false;
+  let items, fromSample = false, errMsg = '';
   try{
     items = await liveStockList(POPULAR_SYMBOLS);
     liveDataAvailable = true;
   } catch(e){
     fromSample = true;
+    errMsg = e.message || String(e);
     items = SAMPLE.filter(s => POPULAR_SYMBOLS.includes(s.symbol));
   }
 
   if(fromSample){
-    showBanner("Live prices couldn't be reached from this page — showing sample data instead. The Android app doesn't have this restriction.");
+    showBanner("Live data failed: " + errMsg);
   }
 
   const sorted = [...items].sort((a,b) => (b.pct ?? 0) - (a.pct ?? 0));
@@ -485,7 +496,7 @@ async function loadCurrentView(){
       renderResults(items.map(i => ({...i, cat: activeCategory})), false);
     } catch(e){
       liveDataAvailable = false;
-      showBanner("Live prices couldn't be reached from this page — showing sample data instead. The Android app doesn't have this restriction.");
+      showBanner("Live data failed: " + (e.message || String(e)));
       renderResults(SAMPLE.filter(s => s.cat === activeCategory), true);
     }
     return;
@@ -498,7 +509,7 @@ async function loadCurrentView(){
     renderResults(results, false);
   } catch(e){
     liveDataAvailable = false;
-    showBanner("Live search couldn't be reached from this page — showing sample data instead. The Android app doesn't have this restriction.");
+    showBanner("Live search failed: " + (e.message || String(e)));
     const ql = q.toLowerCase();
     renderResults(SAMPLE.filter(s => s.name.toLowerCase().includes(ql) || s.symbol.toLowerCase().includes(ql)), true);
   }
@@ -588,6 +599,13 @@ document.getElementById('search').addEventListener('input', () => {
 
 renderChips();
 loadHomeDashboard();
+
+// Visible build marker — if this text ever doesn't match what you expect,
+// your browser is showing a cached/old version, not the current code.
+const marker = document.createElement('div');
+marker.style.cssText = 'text-align:center; color:var(--muted); font-size:10px; margin-top:30px; opacity:0.6;';
+marker.textContent = 'build: v6-error-detail';
+document.querySelector('.wrap').appendChild(marker);
 </script>
 </body>
 </html>
