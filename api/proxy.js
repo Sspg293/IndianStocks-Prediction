@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     const text = await upstream.text();
 
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 's-maxage=5, stale-while-revalidate=15');
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
     res.status(upstream.status).send(text);
   } catch (err) {
     res.status(502).json({ error: 'Upstream fetch failed', detail: String(err) });
