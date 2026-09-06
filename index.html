@@ -162,13 +162,18 @@ const CHART_API = "https://query1.finance.yahoo.com/v8/finance/chart";
 // function at /api/proxy). Runs server-side, so there's no browser CORS
 // restriction to route around, and nothing here is a third-party "proxy"
 // domain a network filter would recognize and block.
-async function fetchJsonViaProxies(targetUrl){
+async function fetchJsonViaProxies(targetUrl, isRetry){
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6000);
   try{
     const res = await fetch(`/api/proxy?url=${encodeURIComponent(targetUrl)}`, { signal: controller.signal, cache: 'no-store' });
     clearTimeout(timeout);
     const text = await res.text();
+    if(res.status === 429 && !isRetry){
+      // Rate-limited — back off longer than our normal spacing and retry once.
+      await new Promise(r => setTimeout(r, 3000));
+      return fetchJsonViaProxies(targetUrl, true);
+    }
     if(!res.ok) throw new Error(`proxy status ${res.status}: ${text.slice(0,150)}`);
     try{
       return JSON.parse(text);
@@ -177,7 +182,7 @@ async function fetchJsonViaProxies(targetUrl){
     }
   } catch(e){
     clearTimeout(timeout);
-    if(e.name === 'AbortError') throw new Error('proxy request timed out (10s)');
+    if(e.name === 'AbortError') throw new Error('proxy request timed out (6s)');
     throw e;
   }
 }
@@ -189,7 +194,7 @@ let currentDetailSymbol = null;
 // ---------- Curated ETF lists ----------
 const GOLD_ETFS = ["GOLDBEES","SETFGOLD","GOLDIETF","HDFCGOLD","GOLD1","GOLDBETA","BSLGOLDETF","AXISGOLD","GOLDADD","QGOLDHALF","LICMFGOLD","IVZINGOLD","TATAGOLD"];
 const SILVER_ETFS = ["SILVERBEES","SILVERIETF","HDFCSILVER","SILVER1","TATSILV","SBISILVER","SILVERADD","SILVERAG","SILVERBETA","AXISILVER","ESILVER","SILVER"];
-const POPULAR_SYMBOLS = ["RELIANCE","TCS","HDFCBANK","INFY","ITC","ICICIBANK","SBIN"];
+const POPULAR_SYMBOLS = ["RELIANCE","TCS","HDFCBANK","INFY","ITC"];
 const INDICES = [ { label: "NIFTY 50", yahoo: "^NSEI" }, { label: "SENSEX", yahoo: "^BSESN" } ];
 
 // ---------- Sample fallback data ----------
@@ -294,7 +299,7 @@ async function liveStockList(symbols){
       } catch(err){
         if(!firstErr) firstErr = err;
       }
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 1500));
     }
     if(ok.length === 0) throw new Error('both sources failed. Custom API: ' + e.message + ' | Yahoo: ' + (firstErr ? firstErr.message : 'unknown'));
     return ok;
@@ -399,7 +404,7 @@ async function renderIndices(){
     } catch(e){
       cards.push({ ...idx, price: null, change: null, pct: null, live: false });
     }
-    await new Promise(r => setTimeout(r, 250));
+    await new Promise(r => setTimeout(r, 1500));
   }
   el.innerHTML = cards.map(c => {
     if(c.price == null) return `<div class="index-card"><div class="index-name">${c.label}</div><div style="color:var(--muted); font-size:13px; margin-top:4px;">Unavailable</div></div>`;
@@ -618,7 +623,7 @@ loadHomeDashboard();
 // your browser is showing a cached/old version, not the current code.
 const marker = document.createElement('div');
 marker.style.cssText = 'text-align:center; color:var(--muted); font-size:10px; margin-top:30px; opacity:0.6;';
-marker.textContent = 'build: v7-rate-limit-fix';
+marker.textContent = 'build: v8-retry-backoff';
 document.querySelector('.wrap').appendChild(marker);
 </script>
 </body>
